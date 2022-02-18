@@ -1,0 +1,858 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "ed1e2de6",
+   "metadata": {},
+   "source": [
+    "# Assignment 1: MA338"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d5ef98b4",
+   "metadata": {},
+   "source": [
+    "#### Instructions"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "e3076872",
+   "metadata": {},
+   "source": [
+    "1. This Notebook will provide you the Tasks you have to complete, include a couple of questions, and define the necessary functions that you could use.\n",
+    "2. You have to submit your modified version of this Notebook to FASER. Write in the title **Assignment-1-RegNumb-#YOUR REGISTRATION NUMBER#.ipynb**\n",
+    "3. You can include as many extra cells as you need to make some comments (remember selecting Markdown cell instead of Code cell)\n",
+    "4. Adding extra (related) stuff could help with grade: For example some nice plots/drawing (you can insert images on Jupyter notebooks, but you need to attach the image in the submission).\n",
+    "5. This notebook will have several sections associated to different tasks you have to complete. In each one of them I will provide what functions you need to complete (for example policy evaluation, value iteration...)\n",
+    "6. If you prefer not to follow the suggested structure but decide to program it in a different way, you can do it, as long as you explain all the processes and complete all the tasks.\n",
+    "    \n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1e1b0119",
+   "metadata": {},
+   "source": [
+    "#### General libraries"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "c9f9295f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import gym\n",
+    "import numpy as np # to work with mathematical operations\n",
+    "import time # to reduce the speed of simulations\n",
+    "import random # to randomly generate data\n",
+    "import matplotlib.pyplot as plt # to plot\n",
+    "from IPython.display import clear_output # Used to clearthe ouput of a Jupyter cell."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "7301d581",
+   "metadata": {},
+   "source": [
+    "Run these commands to download and install the latest version of GridWorld (if you already installed it for the Lab 2, it should be ok)\n",
+    "\n",
+    "```bash\n",
+    "git clone https://github.com/andremht/gym-gridworld.git\n",
+    "cd gym-gridworld\n",
+    "pip3 install -e .\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "1efa4346",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import gym_gridworld"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "efd6b40f",
+   "metadata": {},
+   "source": [
+    "##### Utilities"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "cb22e8a1",
+   "metadata": {},
+   "source": [
+    "The following functions can be useful to run the agents that you will create, as well as display the results in the notebook."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "7cc44bbf",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "## The following function will be use to evaluate the different policies.\n",
+    "# The environment env will define what type of grid we will use\n",
+    "# Agent will be defined according different policies\n",
+    "# tsleep is used to create slower iterations so we can see how the agent moves in the grid\n",
+    "\n",
+    "\n",
+    "def run_agent(env, agent, tsleep = 0.05):\n",
+    "    state = env.reset()\n",
+    "    time_step = 0\n",
+    "    total_reward = 0\n",
+    "    reward = 0;\n",
+    "    done = False\n",
+    "    while not done:\n",
+    "        action = agent.act(state, done);\n",
+    "        state, reward, done, info = env.step(action)  # step is defined into the environment, and it provides the new state, the reward obtained, and whether we finished or not\n",
+    "        total_reward += reward\n",
+    "        time_step += 1\n",
+    "        clear_output(wait=True)  # to have a different displayed result on the screen\n",
+    "        env.render()    # this code displays the agent state and action\n",
+    "        print(\"Time step:\", time_step)\n",
+    "        print(\"State:\", state)\n",
+    "        print(\"Action:\", action)\n",
+    "        print(\"Total reward:\", total_reward)\n",
+    "        time.sleep(tsleep)  # to delay the transitions"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "0f726374",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#This function will an array and turn it into the grid format, and then plot the value function with a colourmap \n",
+    "\n",
+    "def plot_values(VF, size= (5,5), name = None):\n",
+    "# reshape value function according to the size of the grid (rows and columns)\n",
+    "    VF_grid = np.reshape(VF, size)\n",
+    "\n",
+    "# plot the state-value function\n",
+    "    fig = plt.figure(figsize=(8, 8))\n",
+    "    ax = fig.add_subplot(111)\n",
+    "    im = ax.imshow(VF_grid, cmap='cool')\n",
+    "    fig.colorbar(im, ax=ax)   #  colourbar to indicate which is higher and lower\n",
+    "    for (j,i),label in np.ndenumerate(VF_grid):\n",
+    "        ax.text(i, j, np.round(label, 5), ha='center', va='center', fontsize=14)\n",
+    "    plt.tick_params(bottom=False, left=False, labelbottom=False, labelleft=False)\n",
+    "    plt.title(name+'-Value Function')\n",
+    "    if name == 'Policy':\n",
+    "            plt.title(name)\n",
+    "    plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a111817d",
+   "metadata": {},
+   "source": [
+    "We can try some examples for the function plot_values, so you can have an idea what it does"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "d25c5cec",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "Q = [1,3,4,6,20,4,1,5]\n",
+    "Q = np.array(Q)\n",
+    "V= 2*np.round(np.random.random_sample((16,)),2)+3"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "1ffad37a",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 576x576 with 2 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 576x576 with 2 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "plot_values(V,size=(4,4), name='State')\n",
+    "plot_values(Q, size=(4,2), name='Action')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c5196679",
+   "metadata": {},
+   "source": [
+    "***\n",
+    "### Key variables in RL and OpenAI Gym\n",
+    "\n",
+    "For this assignment we will explore two variants of the Gridworld. The first one `'GridWorld-3x3-Wall-v0'` is a grid of 3x3 and contains a wall in some cells that do not allow to move on those directions. The second one is known as `FrozenLake-v1` which contains a few cells with holes that once the agent step on it, it drowns and the episode finishes. We will give more details once we start working with them. In the meantime a few reminders on OpenAI Gym variables.\n",
+    "\n",
+    "* __Agent__: The learner and decision maker. This is a class you should create.\n",
+    "* __Environment__:  What the agent interacts with. This is the variable `env` in `env = gym.make(version of gridworld)`. In GridWorld, a particularly important variable is `env.P`, which contains the Markov process model of the system. This variable encodes the state transition probabilities, rewards, and other information. \n",
+    "* __State__: A state $s \\in \\mathcal{S}$ is a succinct representation of the environments current state. The current sate can be obtained by `env.s`\n",
+    "* __Action__: The agent can take actions $a \\in \\mathcal{A}$ in order to change the state of the environment. It is an element of `env.action_space`.\n",
+    "* __Policy__: Rules for how the agent choses the next action given the current state, $a = \\pi(s)$.\n",
+    "* __Reward__: An immediate reward $R(s,a)$ that the agent gets for taking action $a$ in state $s$. A reward depends on a state and action, so it can only be obtain through the `step` function, which in turn updates the environments state.\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1d649e45",
+   "metadata": {},
+   "source": [
+    "##  Dynamic Programming\n",
+    "\n",
+    "#### GridWorld 3x3 with a Wall."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "64ec1bc7",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Initial state: 6\n",
+      "State space: Discrete(9)\n",
+      "Action space: Discrete(4)\n",
+      "\n",
+      "FFF\n",
+      "FWF\n",
+      "\u001b[41mS\u001b[0mWG\n"
+     ]
+    }
+   ],
+   "source": [
+    "env_GW = gym.make('GridWorld-3x3-Wall-v0')\n",
+    "state = env_GW.reset()  #will set the agent into a random initial state\n",
+    "print('Initial state:', state) #reminder: python starts counting from 0\n",
+    "print(\"State space:\", env_GW.observation_space) # observations and states will be the same for us in this module\n",
+    "print(\"Action space:\", env_GW.action_space) # all the available actions and their type: discrete or continuous\n",
+    "env_GW.render()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c303e3b0",
+   "metadata": {},
+   "source": [
+    "__State space__: We see that the state space contains 9 discrete states. In this case each state corresponds to a position of the agent (3x3=9 possibilities).  \n",
+    "But some of those states are not accesible, since there is a wall on them (states *4* and *7*.\n",
+    "State *6* is the starting point **S**, and state *8* is the goal **G**. \n",
+    "\n",
+    "__Action space__: The 4 discrete actions corresponds to: 0 - Left, 1 - Down, 2 - Right, 3 - Up. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "9674fb11",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "  (Right)\n",
+      "FFF\n",
+      "FWF\n",
+      "\u001b[41mS\u001b[0mWG\n",
+      "New state: 6\n",
+      "Reward: -1.0\n",
+      "Done: False\n"
+     ]
+    }
+   ],
+   "source": [
+    "new_state, reward, done, info = env_GW.step(2) # Take action 3 (Up)\n",
+    "env_GW.render() #displays the results\n",
+    "print(\"New state:\", new_state)\n",
+    "print(\"Reward:\", reward)\n",
+    "print(\"Done:\", done)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "6259e7d6",
+   "metadata": {},
+   "source": [
+    "We define now a uniform random agent (that does not learn, only acts)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "df2bddf9",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class RandomAgent(object):\n",
+    "    def __init__(self, nA, nS):\n",
+    "        self.nA = nA\n",
+    "        self.nS = nS\n",
+    "        self.probs = np.ones((self.nS,self.nA))/self.nA #uniformly random probability (0.25 to each option)\n",
+    "        \n",
+    "\n",
+    "    def act(self, state, done):\n",
+    "        # IMPORTANT: the following code allows to select randomly an action, given a probability distribution p\n",
+    "        action = np.random.choice(np.arange(self.nA), p=self.probs[state]) \n",
+    "        return action # a random policy"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "9569b696",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "agent_uniform = RandomAgent(env_GW.nA, env_GW.nS) #an instantiation of an agent of the class RandomAgent\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "570e48cc",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "  (Down)\n",
+      "FFF\n",
+      "FWF\n",
+      "SW\u001b[41mG\u001b[0m\n",
+      "Time step: 140\n",
+      "State: 8\n",
+      "Action: 1\n",
+      "Total reward: -140.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "run_agent(env_GW, agent_uniform, tsleep = 0.05)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "089b9587",
+   "metadata": {},
+   "source": [
+    "*Remark*: notice that in this grid we can easily spot the optimal policy, but a random agent struggles to find it. "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "4884fadd",
+   "metadata": {},
+   "source": [
+    "### Task 1.1: Bellman Equation"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c74b9caf",
+   "metadata": {},
+   "source": [
+    "The following functions will help you to write the Bellman Equation for $v_{\\pi}$ in a iterative way. \n",
+    "\n",
+    "**Your task here is to write down the respective pseudo code for each function, or alternatively, the equations or backup diagrams associated. You can either write it directly here using LaTeX, or include an image in your submission.**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "f4730adb",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Set up the discount factor\n",
+    "GAMMA = 1.0 # defined as a global variable, so you can easily change it if needed.\n",
+    "\n",
+    "#For each action, computes the effect of the action, and update discounted reward for that action\n",
+    "def Q_from_V(env, s, value_function):\n",
+    "    action_values = np.zeros(env.nA)\n",
+    "    for a in range(env.nA):\n",
+    "        for p, next_s, reward, _ in env.P[s][a]:\n",
+    "            action_values[a] += p * (reward + GAMMA * value_function[next_s])   # a += 1 is the same than a = a+1\n",
+    "    return action_values\n",
+    "\n",
+    "# Compute the expected state-value according to the action policy, \n",
+    "# where the weights are the associated probabilities agent.probs\n",
+    "def weighted_action_value(env, agent, action_values, s):\n",
+    "    weighted_value = 0\n",
+    "    action_set = range(agent.nA)\n",
+    "    for action in action_set:\n",
+    "        weighted_value += agent.probs[s , action] * Q_from_V[action]    \n",
+    "    return weighted_value\n",
+    "\n",
+    "def Bellman_equation_RHS(env, agent, old_value_function):    #the righthand side of the Bellman Equation for V\n",
+    "    value_function = np.zeros(env.nS)\n",
+    "    for s in range(env.nS):\n",
+    "        if env.is_terminal(s):\n",
+    "            value_function[s] = 0.0\n",
+    "        else:\n",
+    "            action_values = Q_from_V(env, s, old_value_function)\n",
+    "            value_function[s] = weighted_action_value(env, agent, action_values, s)\n",
+    "    return value_function\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "324a080b",
+   "metadata": {},
+   "source": [
+    "### Task 1.2"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c7b6fc78",
+   "metadata": {},
+   "source": [
+    "The following function will compute the Iterative Policy Evaluation algorithm. **Yor task is to complete the following function where it says `# YOUR CODE HERE`**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "8e1bd46b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def policy_evaluation(env, agent, old_value, attempts=20, tol=1e-6):  \n",
+    "    # attempts is written in case we don't converge fast enough. Probably not an issue for this problem, \n",
+    "    # but for others it may be relevant\n",
+    "    # old_value - we store the previous value here\n",
+    "    for i in range(attempts):\n",
+    "        # YOUR CODE HERE (you need to define how new_value is computed. You can the functions from Task 1.1)\n",
+    "\n",
+    "        if np.max(np.abs(new_value-old_value)) < tol:\n",
+    "            break\n",
+    "        old_value = new_value\n",
+    "    return new_value"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "10518a48",
+   "metadata": {},
+   "source": [
+    "### Task 1.3"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3f434d69",
+   "metadata": {},
+   "source": [
+    "The following function will compute a *Policy Improvement* over the current policy $\\pi$.\n",
+    "\n",
+    "**Your task is to write that function.** HINT: you can use the function `Q_from_V` from **Task 1.1** to create the new policy."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "27136553",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def policy_improvement(env, agent, value_function):\n",
+    "    new_probs = np.ones(env.nA)/env.nA\n",
+    "    for s in range(env.nS):\n",
+    "        #### YOUR CODE HERE\n",
+    "        #\n",
+    "        #### \n",
+    "        agent.probs[s,:] = new_probs\n",
+    "# this function does not return anything, it just modifies the probabilities of the agent according to the \n",
+    "# improved policy. You can also create an alternative version where the new policy is returned."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d60676ce",
+   "metadata": {},
+   "source": [
+    "### Task 1.4"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "6b8d660c",
+   "metadata": {},
+   "source": [
+    "The following function should combined both functions from  **Task 1.2** and **Task 1.3** to create a Policy Iteration Algorithm.\n",
+    "\n",
+    "**Your task is to write that function**. It should return both the Optimal Policy and the Optimal State Value Function. \n",
+    "\n",
+    "You can do this in more than one cell. For example use the following function to compute the optimal state value $v$, use that to obtain the optimal action value  $q$, and with that define the optimal policy. But you also can do it in one step."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "f178922d",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def policy_iteration(env, agent, value_function, MaxIter=1000, tol=1e-6): \n",
+    "    #run it until no changes (tol) or until we run out of time (MaxIter)\n",
+    "    optimal_value_function = value_function   #initialisation\n",
+    "    optimal_policy = np.zeros([env.nS, env.nA]) / env.nA  #  initialisation\n",
+    "    # YOUR CODE HERE\n",
+    "    return optimal_policy, optimal_value_function\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "c900f02f",
+   "metadata": {},
+   "source": [
+    "### Task 1.5\n",
+    "Similar to the previous point the following function is the Value Iteration Algorithm\n",
+    "\n",
+    "**Your task is to create that function**. The procedure should be similar to **Task 1.4** but you merged a couple of steps (sweeps) into one.  You should provide the Optimal State Function and the respective Optimal Policy.\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "d5fb51b0",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def value_iteration(env, agent, value_function, MaxIter=1000, tol=1e-6):\n",
+    "    #YOUR CODE HERE\n",
+    "    return optimal_value_function"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "7960c261",
+   "metadata": {},
+   "source": [
+    "### Task 1.6 Testing Gridworld\n",
+    "\n",
+    "Now that you have created the functions is time to test them on the environment. \n",
+    "\n",
+    "**Your task is to try different values of GAMMA and compare both Value Iteration and Policy Iteration on it**\n",
+    "\n",
+    "Write as many comments as you consider necessary, include some plots (for example use the function `plot_values` to display the state and action value functions)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "id": "84e3f467",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Initial state: 6\n",
+      "State space: Discrete(9)\n",
+      "Action space: Discrete(4)\n",
+      "\n",
+      "FFF\n",
+      "FWF\n",
+      "\u001b[41mS\u001b[0mWG\n"
+     ]
+    }
+   ],
+   "source": [
+    "env_GW = gym.make('GridWorld-3x3-Wall-v0')\n",
+    "state = env_GW.reset()  #will set the agent into a random initial state\n",
+    "print('Initial state:', state) #reminder: python starts counting from 0\n",
+    "print(\"State space:\", env_GW.observation_space) # observations and states will be the same for us in this module\n",
+    "print(\"Action space:\", env_GW.action_space) # all the available actions and their type: discrete or continuous\n",
+    "env_GW.render()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "id": "32dfa2bf",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "  (Down)\n",
+      "FFF\n",
+      "FWF\n",
+      "SW\u001b[41mG\u001b[0m\n",
+      "Time step: 104\n",
+      "State: 8\n",
+      "Action: 1\n",
+      "Total reward: -104.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "agent1 = RandomAgent(env_GW.nA, env_GW.nS)\n",
+    "run_agent(env_GW, agent1, tsleep = 0.05)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "id": "2faa9626",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#YOUR CODE HERE: Improve agent1 policy using POLICY iteration algorithm and run the improved agent again \n",
+    "# (you can do many runs to observe the improvement step by step)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "id": "66d7bc1b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "agent2 = RandomAgent(env_GW.nA, env_GW.nS)\n",
+    "#YOUR CODE HERE: Improve agent2 policy using VALUE iteration algorithm and run the improved agent again \n",
+    "# (you can do many runs to observe the improvement step by step)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b10e266d",
+   "metadata": {},
+   "source": [
+    "**Question** Can you measure which method find the optimal policy faster? (if any)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "83db1321",
+   "metadata": {},
+   "source": [
+    "###  Frozen Lake environment"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "id": "88c49672",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Initial state: 0\n",
+      "State space: Discrete(16)\n",
+      "Action space: Discrete(4)\n",
+      "\n",
+      "\u001b[41mS\u001b[0mFFF\n",
+      "FHFH\n",
+      "FFFH\n",
+      "HFFG\n"
+     ]
+    }
+   ],
+   "source": [
+    "env_FL = gym.make('FrozenLake-v1',is_slippery=False)\n",
+    "state = env_FL.reset()  #will set the agent into a random initial state\n",
+    "print('Initial state:', state) #reminder: python starts counting from 0\n",
+    "print(\"State space:\", env_FL.observation_space) # observations and states will be the same for us in this module\n",
+    "print(\"Action space:\", env_FL.action_space) # all the available actions and their type: discrete or continuous\n",
+    "env_FL.render()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d46e0a77",
+   "metadata": {},
+   "source": [
+    "`FrozenLake-v1` is an environment that simulates the following situation: imagine your agent wants to grab something on the other side of the Frozen Lake. Most of the lake is frozen, but there are a couple of cells with thin ice (holes) that will break if it steps on them. The objective is to arrive to the goal as quick as possible without falling into any holes.\n",
+    "There are more than one terminal state: either reaches the goal or falls into the hole.  Every transition has a `reward=0` except when the agent reaches the goal, which has  `reward=1`.\n",
+    "\n",
+    "By default FrozenLake comes with the attribute `is_slippery = True` which means that even if the agent decides to go (for example) `right`, it might end up `up, left, down` to its current position (with certain probability). For simplicity we will call the environment with the parameter `is_slippery = False` (deterministic case), but you are welcome to explore the general case if you have time.\n",
+    "\n",
+    "1. **S**: Starting Point\n",
+    "2. **G**: Goal\n",
+    "3. **F**: Frozen (safe cell that the agent can step on it)\n",
+    "4. **H**: Hole (thin ice that will break if the agent steps on it will die) \n",
+    "\n",
+    "As usual, actions are given by `left = 0, down = 1, right =1, up = 3`.\n",
+    "\n",
+    "The function `env_FL.P[s][a]` will provide the set of [probability, new_state, reward,done]. I say **set**, because in the *slippery* case, it provides all the different options. In the non-slippery case it will give a single vector."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "id": "c9ce5370",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[(1.0, 9, 0.0, False)]\n"
+     ]
+    }
+   ],
+   "source": [
+    "current_state = 10  \n",
+    "action = 0  # Left \n",
+    "#[(probability, new_state, reward, done)] = env_FL.P[current_state][action]\n",
+    "print(env_FL.P[current_state][action])\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "40a3255a",
+   "metadata": {},
+   "source": [
+    "Let us create a random agent and see how it performs."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "id": "c9f51d07",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "  (Down)\n",
+      "SFFF\n",
+      "F\u001b[41mH\u001b[0mFH\n",
+      "FFFH\n",
+      "HFFG\n",
+      "Time step: 6\n",
+      "State: 5\n",
+      "Action: 1\n",
+      "Total reward: 0.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "agent3 = RandomAgent(env_FL.nA, env_FL.nS)\n",
+    "run_agent(env_FL, agent3, tsleep = 0.5) #if the agent dies too quickly, increase the value of tsleep to observe the transitions"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "id": "aca2b00c",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAAAMYAAAHRCAYAAAAxP8bKAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjQuMywgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy/MnkTPAAAACXBIWXMAAAsTAAALEwEAmpwYAAAYv0lEQVR4nO3cf7RdZX3n8ffXBAoEMANJKOQHAkVb+Vm5/BBQZABNoJXp6pRFTek4kEEQXDpTl0jboXba1TqrdgbqArMyLKZaQOpS6EINILYyjA2RwGpk+D2BBBKCYhAcAioQv/PHOQknl31/PLnn5J57nvdrrSzu3mef8+yE873f55xn709kJpK295bJPgGpH1kYUgMLQ2pgYUgNLAypgYUhNaiuMCJiXUSc3v75DyPi2sk+J/Wf6ZN9AhMREeuA/YAtwMvAcuBjmbl5PM/PzL/o3dlpKhuEjvGbmbkn8C7gWOCPJ/l8NAAGoTAAyMxngNuAwyPigxHxUES8GBF3RcSvNT0nIj4TEdd3bJ8cESvaz1sfER+OiGMj4ocRMb3juN+OiNU9/0tp0gxMYUTEfOBM4CXgy8AngNm0pldfj4hdx3j+AlqF9fn2844GVmfmKuB54IyOw38P+Lvu/g3UTwahMP4hIl4Evgv8L+Bh4JuZeWdmvgZ8DtgdOHGM11kMfDszv5yZr2Xm85m5uv3YF2kVAxGxD/AB4Mau/03UN6b0h++2f5OZ3966ERFfAJ7aup2Zv4iI9cDcMV5nPvDECI9dDzwSEXsC5wD/OzOfndhpq58NQscYbiNw4NaNiAhab/pnxnjeeuCQpgfan1/uAX4LOA+nUQNvEAvjK8BZEXFaROwC/AHwc2DFGM+7ATg9Is6JiOkRsW9EHN3x+JeATwFHALf04LzVRwauMDLzMVqfBz4PbAJ+k9ZXuq+O8bynaX14/wPgx8Bq4KiOQ26h1YluycyXu3/m6ifhjUrjFxFPAB/p/EyjwTRwHaNXIuK3gQT+abLPRb03CN9K9VxE3AW8EzgvM38xyaejncCplNTAqZTUwMKQGozrM8Yee8zKmTPf1uNTUTc9++z9mzJzdrdfd2EszE1s6vbLcj/335GZC7v+wjtoXIUxc+bbuPAj9/X6XNRFf/qZeGrso8ptYhP30f33QhCzuv6iE+C3UiqW0YsX7cFrToCFoWI1FIYfvqUGdgwV60nH6DN2DKmBHUNFkjo6xrgLY9W917BixV/x0kvPMmfOYXxg4ZUceOB7Go9dt/YuVq787zzzzL387Gc/YZ99foUTTvgEv/6u87c75otfPPVNz73kkkdYu/afBnKsWbN/daf9OwK7Nb7oRIWFsc1Pf/pjbr/945x51jUsWHAyq1Zdww3XL+KSSx7mrTMXvOn49etXMGfOEZx40qfYa8/9WfPEHXz96xcyffpuHHHkh7Y79qMffYjdd99n2/badd8ZyLH2mDGbBx/8+5023l//9f4/e9MLatzGVRgvv/xDjjr6wxxzzH8A4MwzP88Ta25n1X1f4PTT//JNx7/nvX+43fax+1zMurXf4ZFHvvam/6EzZsxhjxlvrO18b+WVAzkWwMp7/ttOHa9X7BjA1tiZQw55/3b7Dz7k/WxYP9bdom/4+c//H3vvPe9N+5ctG2LLlp8ze/Y7OfGky9i48X7efeInB2qs97z3j1kw/6SdOp4mZjwdYxbAnjP2227nnjP2Y+3m8d3I9vhj32Dt2n/k/PP/+Y3n77U/Z531BQ6YeyxbtrzKA9//O264/gPbXnuQxvrSF0/jnHO+SuaWnTYesOe4XnQH2DE6xfb/GkkCY/8LPf30P/O1r32IhYv+hrnzjtu2f9asdzBr1ju2bc+f/242bXqUdeu+M3BjvfjiOu67b2lrx04ab82a2355zBfViMazjrEJYPPmH2y38+WXn2PPPfdrfMJWTz/1XW64fhGnnvpfOPbYi8ccaP6CkxjEsebOO56f/ORpIqbttPGAXxrzwB2U0f0//WbMwsjMV3fZZQ+efOLO7fY/+cSdzJs/crjfU+vu5oYbFnHK+/6EE979iXGdzI+ee5Bdd91r4Mb64Q9Ws9deB3DAAcfstPGA18Z1cKGt6xiDXhjjmkrNmLEfq1f/LXPnHsf8BSdx331LeemljQwNXQTAt799ORufuZff/3f/CLS+W7/xxrMYOvajHHnEYja/1PotGW+ZxowZrVsEVt5zJTNnvo3Zcw5rzY0fuJ5HH/0HTjjhP3HvvZ8fuLHOOedrbPnFa9xy83k7ZTzguaJ3grYzrsLYffd9OPHET3L33X/O5s3PMmfO4SxevJyZM1uBf5tfepYf//iNdMvVq/+W1157hXtWfI57Vnxu2/63vvVAPvEf1wGwZcurfOtbn+Sll55h+vTdmTPnMD70oW9y6NvPZJ99DhnIsQB++srzO2W8G28868Xx/L8t1qe/4bttXGEIBxwwlN6oNLX86Wfi/swc6vbrvmvaUH53t+6/F2a80pvz3VFeK6ViNXQMC0PFaigMLzuXGtgxVMyOIVXKjqEi3qgkNalkHcOplNTAjqFidgypUnYMFauhY1gYKlLLt1JOpaQGdgwVs2NIlbJjqEwlC3xGdBrRqQZGdBrRWcyO0WZE58THAiM6pxIjOo3oVAMjOo3oLFLLAp8RnUZ0ThkRsRC4CpgGXJuZnx32+GLgsvbmZuDizPx+RLwD+PuOQw8GrsjMK0cay4hOIzqLTUYSYURMA64GFgHvBH43It457LC1wCmZeSTwZ8AygMx8LDOPzsyjgWOAV4BbRhvPiE4jOsv0oCjGOTU7DliTmU9m5qvATcDZnQdk5orMfKG9uRJ484cxOA14IjOfGm0wIzqN6OwXsyKiM8ltWWYu69ieC6zv2N4AHD/K610A3Naw/1zgy2OdjBGdRnQW69GH701jJBE2jdoYoxkRp9IqjJOH7d8V+CBw+VgnY0TngOpVROdRuw7lbbO7/16Yu3H0842IdwOfycwPtLcvB8jMvxx23JG0Pj8syszHhz12NnBJZm6/9tDAa6VUbJK+rl0FHBoRBwHP0JoSbbfKGRELgJuB84YXRdvvMo5pFFgYKjRZ6xiZ+XpEXArcQevr2usy86GIuKj9+FLgCmBf4JpofS3++tYuFBF7AGcAHxnPeBaGpozMXA4sH7ZvacfPS4AlIzz3FVpFMy4WhorVsPLtjUpSAzuGylRyo5IdQ2pgx1CxGjqGhaFiNRSGUympgR1DRWq5UcmOITWwY6hYDR3DwlAZ1zGketkxVKyGjmFEpxGdamBEpxGdxewYbUZ0TnwsGIyIzlrWMYzoNKJTDYzoNKKzmB2j04DFZhrRqdEY0WlEZ5nJSyLcqYzoNKJTDYzoNKKzWD/+hu82IzqN6CxWQ2EY0TmgehXRefjuQ/mVg7v/Xjjs4d6c747yWikVqWWBz6trpQZ2DBWroWNYGCrTp+sO3eZUSmpgx1AxO4ZUKTuGitXQMSwMFXEdQ6qYHUPF7BhSpewYKuMCn1QvO4aK1dAxLAwVszA6GNFpRGdNjOg0orNILQt8RnQa0akGRnQa0VnMjtFiROcExxqoiM5K1jGM6DSiUw2M6DSis5gRnRjR2Y2xjOiceozoNKKzWD/+hu82IzqN6CxSyzqGEZ0DqlcRnb+651Bed1T33wsnrTCiU1NcDR3Dy86lBnYMlenTr1e7zY4hNbBjqFgNHcPCULEaCsOplNTAjqEitSzw2TGkBnYMFauhY1gYKuM6hlQvO4aK2TGkStkxVKyGjmFhqIjrGFLFzK41u7ZYDR3D7Fqza9XA7Fqza8tUssBndq3ZtWpgdq3ZtcXsGJ0GLE/W7NodV0NhmF1rdq0amF1rdm2RrQt8gx7qbHat2bVqYHat2bXF+vE3fLeZXTugepVde+jMobzy5O6/F37jm2Ofb0QsBK4CpgHXZuZnhz2+GLisvbkZuDgzv99+bCZwLXA4rRnh+Zl5z0hjeRGhpoSImAZcDZwBbABWRcStmflwx2FrgVMy84WIWAQsA45vP3YVcHtm/tv22tweo41nYajYJE2ljgPWZOaTABFxE3A2sK0wMrNzpXQlMK997N7Ae4EPt497FXh1tMG8ulb9YlZE3Nfx58Jhj88F1ndsb2jvG8kFwG3tnw8GfgT8z4j4l4i4NiJmjHYydgwV61HH2DTGZ4ymURs/IEfEqbQK4+T2runAu4CPZeb3IuIq4NPAfx5pMDuGikziOsYGYH7H9jxg4/CDIuJIWh+yz87M5zueuyEzv9fe/iqtQhmRhaGpYhVwaEQc1P7wfC5wa+cBEbEAuBk4LzMf37o/M38ArI+IrdfOnEbHZ5MmTqVUbDI+fGfm6xFxKXAHra9rr8vMhyLiovbjS4ErgH2Ba6J1TdrrHdOzjwE3tIvqSeDfjzaehaEpIzOXA8uH7Vva8fMSYMkIz10NjHtdx8JQmT69tqnb/IwhNbBjqFgNHcPCULEaCsOplNTAjqEiJhFKFbNjqEwlX9ca0WlEZzELo82IzomPZUTn1GJEpxGdxewYGNHZjbGM6Jx6jOg0orOYHaPTgMVmGtG5Y1zHeIMRnRMcy4jOqceITiM6y/TgttZ+7EBGdBrRqQZGdBrRWawff8N3mxGdA6pXEZ0H7zuUf76w+++FxTf25nx3lNdKqVgNHcPCULEaCsPLzqUGdgwVcYFPqpgdQ2X6dEGu2ywMFauhMJxKSQ3sGCpmx5AqZcdQkVq+rrUwVKyGwnAqJTWwY6hMJesYdgypgR1DxWroGEZ0GtFZzMJoM6Jz4mMZ0Tm1GNFpRGcR1zHajOic+FhGdE49RnQa0VnMjtFpwGIzjejUaIzoNKKzTCVJhEZ0GtFZrIbCMKLTiE41MKLTiM5i/fgbvtuM6BxQvYroPHDOUF72O91/L1xyjRGdmsJc4JNGUENheNm51MCOoTJ9+vVqt9kxpAZ2DBWroWNYGCpWQ2E4lZIa2DFUpJZ1DDuG1MCOoWJ2DKlSdgyVqWSBz8JQsRoKw6mU1MCOoWI1dAwjOo3oVAMjOo3oLFLLAp8RnUZ0FrMwMKKzG2MZ0Tn1GNFpRGcZ1zGGGbDYTCM6NRojOo3oLFZDEqERnUZ0FquhMIzoNKJTDYzoNKKzSC3rGEZ0DqheRXTO3X8oLzm/+++FP/oLIzo1xdXQMby6Vmpgx1CZPv0WqdssDBWroTCcSkkNLAwVm6wFvohYGBGPRcSaiPh0w+OLI+KB9p8VEXFUx2PrIuL/RMTqiBjzazWnUpoSImIacDVwBrABWBURt2bmwx2HrQVOycwXImIRsAw4vuPxUzNz03jGszBUZBIX+I4D1mTmkwARcRNwNrCtMDKz8/r9lcCbr88fJ6dSKtajqdSsiLiv48+Fw4adC6zv2N7Q3jeSC4DbOk8b+FZE3N/w2m9ix1C/2DTGyndTn2q8bCMiTqVVGCd37D4pMzdGxBzgzoh4NDPvHmkwO4bK9KBbjHNqtgGY37E9D9j4ptOLOBK4Fjg7M5/fuj8zN7b/+xxwC62p2YgsDE0Vq4BDI+Kg9u3W5wK3dh4QEQuAm4HzMvPxjv0zImKvrT8D7wceHG0wp1IqNhkfvjPz9Yi4FLgDmAZcl5kPRcRF7ceXAlcA+wLXROtOydfb07P9gFva+6YDN2bm7aONZ2Go2GStfGfmcmD5sH1LO35eAixpeN6TwFHD94/GqZTUwI6hIrXcqGREpxGdamBEpxGdxewYbUZ0TnwsGJyIzhoY0WlEZxlvVNrGiM4JjjVQEZ1YGNsbsNhMIzo1GiM6jegsVkMSoRGdRnSqgRGdRnQWcYGvgxGd3RkLpn5EJ9RRGEZ0DqheRXT+8ryh/P2Pd/+98FefMqJTU1mffljuNq+ulRrYMVSsho5hYahYDYXhVEpqYMdQkVrWMewYUgM7horZMaRK2TFUppIFPgtDxWooDKdSUgM7horZMaRK2TFUpJYFPgtDxSyMDkZ0GtFZEyM6jegs4zrGG4zonPhYYETnVGJEpxGdxewYLUZ0TnAsIzqnHiM6jehUAyM6jegssnUdw4hOIzonPJYRnVOPEZ1GdBbrx9/w3WZEpxGdamBE54DqVUTn7LcN5W/9UfffC//jQiM6NcXVMJXysnOpgR1DxewYUqXsGCrijUrSCGooDKdSUgM7hsr06bVN3WbHkBrYMVSsho5hYahYDYXhVEpqYMdQkVrWMewYUgM7hsr4da1ULzuGitXQMcyuNbu2mIXRZnbtxMcamOzaSphda3ZtMTsGZtd2Y6xBy66tgdm1ZtcWqWWBz+xas2vLuI6xjdm1ExxrkLJra2F2rdm1xWoIdTa71uxaNTC71uzaYv34G77bzK4dUL3Krt3nkKE87b92/73w1d/pr+xaLyKUGngRoYrUso5hx5Aa2DFUpk+/Xu02O4bUwI6hYjV0DAtDxWooDKdSUgM7hor4da1UMQtDxSbr6tqIWBgRj0XEmoj4dMPjiyPigfafFRFx1LDHp0XEv0TEN8Yay6mUykzSOkZETAOuBs4ANgCrIuLWzHy447C1wCmZ+UJELAKWAcd3PP5x4BFg77HGs2NoqjgOWJOZT2bmq8BNwNmdB2Tmisx8ob25Eth2c3xEzAPOAq4dz2B2DBXrUceYFRGdl+0uy8xlHdtzgfUd2xvYvhsMdwFwW8f2lcCngL3GczIWhvrFpjEuO28qx8Z7JiLiVFqFcXJ7+zeA5zLz/oh433hOxsJQsUn6unYDML9jex6wcfhBEXEkrenSosx8vr37JOCDEXEmrYTGvSPi+sz8vZEGM6LTiM4ik7iOsQo4NCIOAp4BzgW2S52LiAXAzcB5mfn41v2ZeTlwefuY9wGfHK0owIhOIzqniMx8PSIuBe4ApgHXZeZDEXFR+/GlwBXAvsA10Yopen1H7wo0otOIzmKTtfKdmcuB5cP2Le34eQmwZIzXuAu4a6yxjOg0olMNjOg0orNMJTcqGdFpRGexGgrDiE4jOtXAiE4jOosZ0dlmRKcRnbUxotOIziK13KhkROeA6lVE595vH8oTru7+e+HO9/dXRKfXSqlYDR3DwlCZPv2w3G3eqCQ1sGOomB1DqpQdQ8Vq6BgWhorUso7hVEpqYMdQMTuGVCk7hspUssBnYahYDYXhVEpqYMdQMTuGVCk7horUssBnRKcRnWpgRKcRncXsGG1GdE58LBiQiE7XMVqM6Jz4WEZ0Tj1GdBrRWcyO0WnAYjON6NRojOg0orNYDUmERnQa0Vlk6zrGoBeGEZ1GdKqBEZ1GdBbrx9/w3WZE54DqVUTnjF8bysO+1P33wqrjjOjUVNannwm6zcJQsRoKw8vOpQZ2DBWzY0iVsmOoSC03KtkxpAZ2DBWroWNYGCpTyTqGUympgR1DxewYUqXsGCpWQ8ewMFTEdQypYnYMFauhYxjRaUSnGhjRaURnmUoW+IzoNKKzmIWBEZ3dGMuIzqnHiE4jOovZMToNWGymEZ0ajRGdRnQWqSWJ0IhOIzrVwIhOIzqL9eNv+G4zotOIzjJ9OvXpNiM6B1SvIjp3O2IoF9zc/ffC/327EZ2a4mroGF5dKzWwY6hYDR3DwlARb1SSKmbHUDE7hlQpO4bKVLLAZ2GoWA2F4VRKamDHUDE7hlQpO4aKuMAnVcyOoWI1dAwLQ2Vcx9ieEZ1GdE62iFgIXAVMA67NzM8Oe3wxcFl7czNwcWZ+PyJ2A+6mFRAxHfhqZv7JaGMZ0WlEZ7HJ6BgRMQ24GjgD2ACsiohbM/PhjsPWAqdk5gsRsQhYBhwP/Bz415m5OSJ2Ab4bEbdl5sqRxjOi04jOqeI4YE1mPgkQETcBZwPbCiMzOyMdVwLz2vuTVgcB2KX9Z9R7uo3oNKKzWI86xqyI6LyZfFlmLuvYngus79jeQKsbjOQC4LatG+2Ocz/wK8DVmfm90U7GiE4jOov0cB1j0xhhCE2jNv7Wj4hTaRXGydsOzNwCHB0RM4FbIuLwzHxwpMGM6DSic6rYAMzv2J4HbBx+UEQcCVwLLMrM54c/npkvRsRdwEJgxMIwotOIzmKTFNG5Cjg0Ig5qT+/PBW7tPCAiFgA3A+dl5uMd+2e3OwURsTtwOvDoaIMZ0WlE55SQma8DlwJ3AI8AX8nMhyLiooi4qH3YFcC+wDURsbrjM8v+wHci4gFaBXZnZn5jtPGM6DSis8wkLvBl5nJg+bB9Szt+XgIsaXjeA8Cvl4xlRKcRncVqWPk2onNA9Sqic5ejh/Jf3dn998KP5hjRqSmuho7hZedSAzuGinijklQxO4aK1dAxLAyVqeRGJadSUgM7horZMaRK2TFUrIaOYWGoiOsYUsXsGCrj17VSvewYKlZDx7AwVMzC6GBEpxGdNTGi04jOYnaMNiM6Jz4WGNE5lRjRaURnkVoW+IzoNKJTDYzoNKKzjAt82xjROcGxjOjsSkTnTmVEpxGdamBEpxGdxfrxN3y3GdFpRKcaGNE5oHoV0fmWY4Zy+sruvxde29WITk1htaxjeNm51MCOoTJ9+vVqt9kxpAZ2DBWroWNYGCpWQ2E4lZIa2DFUzI4hVWpcK98R8SPgqd6fjrrowMyc3e0XjYjbad+j02WbMnNhD153h4yrMKTaOJWSGlgYUgMLQ2pgYUgNLAypwf8HabCNbZw9bz8AAAAASUVORK5CYII=\n",
+      "text/plain": [
+       "<Figure size 576x576 with 2 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#agent3.probs[:,1]=.1\n",
+    "#agent3.probs[2,3] =.8\n",
+    "plot_values(agent3.probs, size=(env_FL.nS, env_FL.nA), name = 'Policy')\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "07e1f4c4",
+   "metadata": {},
+   "source": [
+    "### Task 1.7 Testing Frozen Lake"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "4bc23c87",
+   "metadata": {},
+   "source": [
+    "Similar to the case of GridWorld, **your task improve the policy of Agent3 using both Policy Iteration and Value Iteration**.\n",
+    "Play around with the parameters (GAMMA, MaxIter) to see if they have any effect on avoiding the death of your agent."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "1e7b0837",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
